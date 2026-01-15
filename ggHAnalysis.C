@@ -264,7 +264,151 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
 
       // GEN block (if enabled)
       if (doGen) {
-         // Restore your GEN filling logic if needed.
+                 std::map<int, std::vector<int> > higgsToAs;
+
+         for (int i = 0; i < nGenPart; ++i) {
+            if (GenPart_pdgId[i] != PDG_A) continue;
+
+            int momIdx = GenPart_genPartIdxMother[i];
+            if (momIdx < 0 || momIdx >= nGenPart) continue;
+            if (GenPart_pdgId[momIdx] != PDG_H) continue;
+
+            higgsToAs[momIdx].push_back(i);
+         }
+
+         int idxH = -1;
+         std::vector<int> idxA;
+
+         for (std::map<int, std::vector<int> >::iterator it = higgsToAs.begin();
+              it != higgsToAs.end(); ++it) {
+            if (it->second.size() >= 2) {
+               idxH = it->first;
+               idxA = it->second;
+               break;
+            }
+         }
+
+         if (idxH >= 0 && idxA.size() >= 2) {
+
+            int idxA1 = idxA[0];
+            int idxA2 = idxA[1];
+
+            h_pt_H->Fill(GenPart_pt[idxH]);
+            h_eta_H->Fill(GenPart_eta[idxH]);
+            h_phi_H->Fill(GenPart_phi[idxH]);
+            h_m_H->Fill(GenPart_mass[idxH]);
+
+            h_pt_A1->Fill(GenPart_pt[idxA1]);
+            h_eta_A1->Fill(GenPart_eta[idxA1]);
+            h_phi_A1->Fill(GenPart_phi[idxA1]);
+            h_m_A1->Fill(GenPart_mass[idxA1]);
+
+            h_pt_A2->Fill(GenPart_pt[idxA2]);
+            h_eta_A2->Fill(GenPart_eta[idxA2]);
+            h_phi_A2->Fill(GenPart_phi[idxA2]);
+            h_m_A2->Fill(GenPart_mass[idxA2]);
+
+            {
+               float deta_A = GenPart_eta[idxA1] - GenPart_eta[idxA2];
+               float dphi_A = GenPart_phi[idxA1] - GenPart_phi[idxA2];
+
+               while (dphi_A >  TMath::Pi())  dphi_A -= 2.0f*TMath::Pi();
+	       while (dphi_A <= -TMath::Pi()) dphi_A += 2.0f*TMath::Pi();
+
+
+               float dR_AA = std::sqrt(deta_A*deta_A + dphi_A*dphi_A);
+               h_dR_AA->Fill(dR_AA);
+            }
+
+            // ΔR(b,b) from each A
+            for (int which = 0; which < 2; ++which) {
+               int idxA_X = (which == 0 ? idxA1 : idxA2);
+               TH1F* hist = (which == 0 ? h_dR_bb_A1 : h_dR_bb_A2);
+
+               std::vector<int> b_from_A;
+
+               for (int i = 0; i < nGenPart; ++i) {
+                   int pdg = GenPart_pdgId[i];
+                  if (std::abs(pdg) != PDG_B) continue;
+
+                  int mom = GenPart_genPartIdxMother[i];
+                  if (mom != idxA_X) continue;
+
+                  b_from_A.push_back(i);
+               }
+
+               if (b_from_A.size() < 2) continue;
+
+               PtComparator cmpB_local(GenPart_pt);
+               std::sort(b_from_A.begin(), b_from_A.end(), cmpB_local);
+
+               int ib1 = b_from_A[0];
+               int ib2 = b_from_A[1];
+
+               float deta_b = GenPart_eta[ib1] - GenPart_eta[ib2];
+               float dphi_b = GenPart_phi[ib1] - GenPart_phi[ib2];
+
+	       while (dphi_A >  TMath::Pi())  dphi_A -= 2.0f*TMath::Pi();
+	       while (dphi_A <= -TMath::Pi()) dphi_A += 2.0f*TMath::Pi();
+
+
+               float dR_bb = std::sqrt(deta_b*deta_b + dphi_b*dphi_b);
+               hist->Fill(dR_bb);
+            }
+
+            // b-quarks from all A's sorted by pT
+            std::vector<int> b_all_idx;
+
+            for (int i = 0; i < nGenPart; ++i) {
+               int pdg = GenPart_pdgId[i];
+               if (std::abs(pdg) != PDG_B) continue;
+
+               int mom = GenPart_genPartIdxMother[i];
+
+               bool fromThisHAs = false;
+               for (size_t k = 0; k < idxA.size(); ++k) {
+                  if (mom == idxA[k]) {
+                     fromThisHAs = true;
+                     break;
+                  }
+               }
+               if (!fromThisHAs) continue;
+
+               b_all_idx.push_back(i);
+            }
+
+            PtComparator cmpB(GenPart_pt);
+            std::sort(b_all_idx.begin(), b_all_idx.end(), cmpB);
+
+            if (b_all_idx.size() >= 1) {
+               int i1 = b_all_idx[0];
+               h_pt_b1->Fill(GenPart_pt[i1]);
+               h_eta_b1->Fill(GenPart_eta[i1]);
+               h_phi_b1->Fill(GenPart_phi[i1]);
+               h_m_b1->Fill(GenPart_mass[i1]);
+            }
+            if (b_all_idx.size() >= 2) {
+               int i2 = b_all_idx[1];
+               h_pt_b2->Fill(GenPart_pt[i2]);
+               h_eta_b2->Fill(GenPart_eta[i2]);
+               h_phi_b2->Fill(GenPart_phi[i2]);
+               h_m_b2->Fill(GenPart_mass[i2]);
+            }
+            if (b_all_idx.size() >= 3) {
+               int i3 = b_all_idx[2];
+               h_pt_b3->Fill(GenPart_pt[i3]);
+               h_eta_b3->Fill(GenPart_eta[i3]);
+               h_phi_b3->Fill(GenPart_phi[i3]);
+               h_m_b3->Fill(GenPart_mass[i3]);
+            }
+            if (b_all_idx.size() >= 4) {
+               int i4 = b_all_idx[3];
+               h_pt_b4->Fill(GenPart_pt[i4]);
+               h_eta_b4->Fill(GenPart_eta[i4]);
+               h_phi_b4->Fill(GenPart_phi[i4]);
+               h_m_b4->Fill(GenPart_mass[i4]);
+            }
+
       }
 
       // Build loose lepton counts (Cut1) + tight collections for "before selection" plots
