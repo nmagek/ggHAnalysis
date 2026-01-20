@@ -27,7 +27,7 @@ From a ROOT session:
 
 ```cpp
 root -l
-.L analysis/ggHAnalysis.C+
-.x analysis/run.C(1)   // signal
-.x analysis/run.C(2)   // QCD background
+.L ggHAnalysis.C+
+.x run.C(1)   // signal
+.x run.C(2)   // QCD background
 
