@@ -11,7 +11,7 @@
 #include <TFile.h>
 #include <TLorentzVector.h>
 #include <TMath.h>
-#include <TVector2.h>   // TVector2::Phi_mpi_pi
+#include <TTree.h>
 
 #include <iostream>
 #include <map>
@@ -32,8 +32,7 @@ const int PDG_GLUON = 21;
 // ============================================================================
 // Main analysis loop
 // ============================================================================
-void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
-
+void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 {
    if (fChain == 0) return;
    Long64_t nentries = fChain->GetEntries();
@@ -251,6 +250,85 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
       return (Jet_btagUParTAK4probbb[idx] > 0.38);
    };
 
+   // =======================
+   // Output file (must exist BEFORE creating the output TTree)
+   // =======================
+   TFile *f = new TFile(outFileName, "RECREATE");
+   if (!f || f->IsZombie()) {
+     std::cerr << "ERROR: could not create output file ggHAnalysis_plots.root\n";
+     return;
+   }
+   f->cd();
+
+   
+   // =======================
+   // Output tree: RECO variables after all cuts (one entry per selected event)
+   // =======================
+   TTree *tRecoAfterCuts = new TTree("RecoAfterCuts", "Reco variables after all cuts");
+   tRecoAfterCuts->SetDirectory(f);
+
+   // Variables to write
+   float out_wgt = 0.0f;
+
+   float out_m_2b = 0.0f, out_pt_2b = 0.0f, out_eta_2b = 0.0f;
+   float out_met = 0.0f, out_met_phi = 0.0f;
+
+   float out_dphi_j1j2 = 0.0f, out_dR_j1j2 = 0.0f, out_abs_dm_j1j2 = 0.0f;
+
+   float out_pt_bjet1 = 0.0f, out_eta_bjet1 = 0.0f, out_m_bjet1 = 0.0f;
+   float out_pt_bjet2 = 0.0f, out_eta_bjet2 = 0.0f, out_m_bjet2 = 0.0f;
+
+   float out_nbjets = 0.0f;
+   float out_ht = 0.0f;
+
+   float out_dphi_met_bb = 0.0f, out_dphi_met_j1 = 0.0f;
+   float out_min_dphi_met_jet = 0.0f;
+
+   // Optional: store leading cleaned jets too (often useful)
+   float out_pt_j1 = 0.0f, out_eta_j1 = 0.0f, out_phi_j1 = 0.0f, out_m_j1 = 0.0f;
+   float out_pt_j2 = 0.0f, out_eta_j2 = 0.0f, out_phi_j2 = 0.0f, out_m_j2 = 0.0f;
+
+   // Branches
+   tRecoAfterCuts->Branch("wgt", &out_wgt, "wgt/F");
+
+   tRecoAfterCuts->Branch("m_2b",  &out_m_2b,  "m_2b/F");
+   tRecoAfterCuts->Branch("pt_2b", &out_pt_2b, "pt_2b/F");
+   tRecoAfterCuts->Branch("eta_2b",&out_eta_2b,"eta_2b/F");
+
+   tRecoAfterCuts->Branch("met",     &out_met,     "met/F");
+   tRecoAfterCuts->Branch("met_phi", &out_met_phi, "met_phi/F");
+
+   tRecoAfterCuts->Branch("dphi_j1j2",   &out_dphi_j1j2,   "dphi_j1j2/F");
+   tRecoAfterCuts->Branch("dR_j1j2",     &out_dR_j1j2,     "dR_j1j2/F");
+   tRecoAfterCuts->Branch("abs_dm_j1j2", &out_abs_dm_j1j2, "abs_dm_j1j2/F");
+
+   tRecoAfterCuts->Branch("pt_bjet1",  &out_pt_bjet1,  "pt_bjet1/F");
+   tRecoAfterCuts->Branch("eta_bjet1", &out_eta_bjet1, "eta_bjet1/F");
+   tRecoAfterCuts->Branch("m_bjet1",   &out_m_bjet1,   "m_bjet1/F");
+
+   tRecoAfterCuts->Branch("pt_bjet2",  &out_pt_bjet2,  "pt_bjet2/F");
+   tRecoAfterCuts->Branch("eta_bjet2", &out_eta_bjet2, "eta_bjet2/F");
+   tRecoAfterCuts->Branch("m_bjet2",   &out_m_bjet2,   "m_bjet2/F");
+
+   tRecoAfterCuts->Branch("nbjets", &out_nbjets, "nbjets/F");
+   tRecoAfterCuts->Branch("ht",     &out_ht,     "ht/F");
+
+   tRecoAfterCuts->Branch("dphi_met_bb", &out_dphi_met_bb, "dphi_met_bb/F");
+   tRecoAfterCuts->Branch("dphi_met_j1", &out_dphi_met_j1, "dphi_met_j1/F");
+   tRecoAfterCuts->Branch("min_dphi_met_jet", &out_min_dphi_met_jet, "min_dphi_met_jet/F");
+
+   // Optional jet branches
+   tRecoAfterCuts->Branch("pt_j1",  &out_pt_j1,  "pt_j1/F");
+   tRecoAfterCuts->Branch("eta_j1", &out_eta_j1, "eta_j1/F");
+   tRecoAfterCuts->Branch("phi_j1", &out_phi_j1, "phi_j1/F");
+   tRecoAfterCuts->Branch("m_j1",   &out_m_j1,   "m_j1/F");
+
+   tRecoAfterCuts->Branch("pt_j2",  &out_pt_j2,  "pt_j2/F");
+   tRecoAfterCuts->Branch("eta_j2", &out_eta_j2, "eta_j2/F");
+   tRecoAfterCuts->Branch("phi_j2", &out_phi_j2, "phi_j2/F");
+   tRecoAfterCuts->Branch("m_j2",   &out_m_j2,   "m_j2/F");
+
+   
    // -----------------------------
    // Event loop
    // -----------------------------
@@ -261,6 +339,15 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
 
       // Guard against pathological events with NaN MET quantities
       if (!isFinite(PuppiMET_pt) || !isFinite(PuppiMET_phi)) continue;
+
+      auto deltaPhiAbs = [&](float phi1, float phi2) -> float {
+    if (!std::isfinite(phi1) || !std::isfinite(phi2)) return 999.f;
+    float dphi = phi1 - phi2;
+    while (dphi >  (float)TMath::Pi())  dphi -= 2.0f*(float)TMath::Pi();
+    while (dphi <= -(float)TMath::Pi()) dphi += 2.0f*(float)TMath::Pi();
+    return std::fabs(dphi);
+      };
+
 
       // GEN block (if enabled)
       if (doGen) {
@@ -348,9 +435,8 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
                float deta_b = GenPart_eta[ib1] - GenPart_eta[ib2];
                float dphi_b = GenPart_phi[ib1] - GenPart_phi[ib2];
 
-	       while (dphi_A >  TMath::Pi())  dphi_A -= 2.0f*TMath::Pi();
-	       while (dphi_A <= -TMath::Pi()) dphi_A += 2.0f*TMath::Pi();
-
+	      while (dphi_b >  TMath::Pi())  dphi_b -= 2.0f*TMath::Pi();
+	      while (dphi_b <= -TMath::Pi()) dphi_b += 2.0f*TMath::Pi();
 
                float dR_bb = std::sqrt(deta_b*deta_b + dphi_b*dphi_b);
                hist->Fill(dR_bb);
@@ -408,9 +494,9 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
                h_phi_b4->Fill(GenPart_phi[i4]);
                h_m_b4->Fill(GenPart_mass[i4]);
             }
-
+	    
       }
-
+ }
       // Build loose lepton counts (Cut1) + tight collections for "before selection" plots
       int nLooseMu  = 0;
       int nLooseEle = 0;
@@ -495,6 +581,32 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
          std::sort(jet_idx_pass.begin(), jet_idx_pass.end(), cmpJet);
       }
 
+      // ----------------------------------------------------
+      // Δphi(J1,J2) and ΔR(J1,J2) BEFORE cleaning (raw jets)
+      // ----------------------------------------------------
+      if (jet_idx_pass.size() >= 2) {
+	int j1_raw = jet_idx_pass[0];
+	int j2_raw = jet_idx_pass[1];
+
+	// Guard against NaNs
+	if (isFinite(Jet_pt[j1_raw]) && isFinite(Jet_eta[j1_raw]) &&
+	    isFinite(Jet_phi[j1_raw]) && isFinite(Jet_mass[j1_raw]) &&
+	    isFinite(Jet_pt[j2_raw]) && isFinite(Jet_eta[j2_raw]) &&
+	    isFinite(Jet_phi[j2_raw]) && isFinite(Jet_mass[j2_raw])) {
+
+	  TLorentzVector J1raw, J2raw;
+	  J1raw.SetPtEtaPhiM(Jet_pt[j1_raw], Jet_eta[j1_raw], Jet_phi[j1_raw], Jet_mass[j1_raw]);
+	  J2raw.SetPtEtaPhiM(Jet_pt[j2_raw], Jet_eta[j2_raw], Jet_phi[j2_raw], Jet_mass[j2_raw]);
+
+	  float dphi_raw = deltaPhiAbs((float)J1raw.Phi(), (float)J2raw.Phi());
+	  float dR_raw   = J1raw.DeltaR(J2raw);
+
+	  h_dphi_J1J2->Fill(dphi_raw, wgt);
+	  h_dR_J1J2->Fill(dR_raw, wgt);
+	}
+      }
+
+      
       // Jet–lepton cleaning (ΔR < 0.4 veto w.r.t. tight leptons)
       std::vector<int> jet_idx_clean;
       jet_idx_clean.reserve(jet_idx_pass.size());
@@ -521,7 +633,7 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
 
          if (!overlaps) jet_idx_clean.push_back(j);
       }
-
+          
       // Fill cleaned jet multiplicity
       h_nJet_clean->Fill((int)jet_idx_clean.size(), wgt);
 
@@ -579,7 +691,9 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
 
       h_MET->Fill(PuppiMET_pt, wgt);
       h_MET_phi->Fill(PuppiMET_phi, wgt);
-
+     
+      
+      
       // Cut1: veto loose leptons
       if (nLooseMu > 0 || nLooseEle > 0) continue;
       ++nPassCut1;
@@ -638,11 +752,8 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
       J1.SetPtEtaPhiM(Jet_pt[j1], Jet_eta[j1], Jet_phi[j1], Jet_mass[j1]);
       J2.SetPtEtaPhiM(Jet_pt[j2], Jet_eta[j2], Jet_phi[j2], Jet_mass[j2]);
 
-      float dphi = std::fabs(TVector2::Phi_mpi_pi(J1.Phi() - J2.Phi()));
+      float dphi = deltaPhiAbs((float)J1.Phi(), (float)J2.Phi());
       float dR   = J1.DeltaR(J2);
-
-      h_dphi_J1J2->Fill(dphi, wgt);
-      h_dR_J1J2->Fill(dR, wgt);
 
       float dmjj = std::fabs((float)J1.M() - (float)J2.M());
       h_abs_dm_J1J2->Fill(dmjj, wgt);
@@ -668,19 +779,63 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
       for (int idx : jet_idx_clean) HT += Jet_pt[idx];
       h_HT->Fill(HT, wgt);
 
-      float dphi_met_bb = std::fabs(TVector2::Phi_mpi_pi(PuppiMET_phi - (float)Hcand.Phi()));
-      float dphi_met_j1 = std::fabs(TVector2::Phi_mpi_pi(PuppiMET_phi - (float)J1.Phi()));
+      float dphi_met_bb = deltaPhiAbs((float)PuppiMET_phi, (float)Hcand.Phi());
+      float dphi_met_j1 = deltaPhiAbs((float)PuppiMET_phi, (float)J1.Phi());
       h_dphi_MET_bb->Fill(dphi_met_bb, wgt);
       h_dphi_MET_J1->Fill(dphi_met_j1, wgt);
 
       float minDphi = 999.f;
       for (int idx : jet_idx_clean) {
          if (!isFinite(Jet_phi[idx])) continue;
-         float dph = std::fabs(TVector2::Phi_mpi_pi(PuppiMET_phi - Jet_phi[idx]));
+         float dph = deltaPhiAbs((float)PuppiMET_phi, (float)Jet_phi[idx]);
          if (dph < minDphi) minDphi = dph;
       }
       if (minDphi < 900.f) h_min_dphi_MET_Jet->Fill(minDphi, wgt);
 
+      // -----------------------------
+      // Fill output tree (after all cuts)
+      // -----------------------------
+      out_wgt = (float)wgt;
+
+      out_m_2b  = (float)m_2b;
+      out_pt_2b = (float)Hcand.Pt();
+      out_eta_2b = (float)Hcand.Eta();
+
+      out_met = (float)PuppiMET_pt;
+      out_met_phi = (float)PuppiMET_phi;
+
+      out_dphi_j1j2 = (float)dphi;
+      out_dR_j1j2   = (float)dR;
+      out_abs_dm_j1j2 = (float)dmjj;
+
+      out_pt_bjet1  = (float)Jet_pt[b1];
+      out_eta_bjet1 = (float)Jet_eta[b1];
+      out_m_bjet1   = (float)Jet_mass[b1];
+
+      out_pt_bjet2  = (float)Jet_pt[b2];
+      out_eta_bjet2 = (float)Jet_eta[b2];
+      out_m_bjet2   = (float)Jet_mass[b2];
+
+      out_nbjets = (float)bjet_idx.size();
+      out_ht = (float)HT;
+
+      out_dphi_met_bb = (float)dphi_met_bb;
+      out_dphi_met_j1 = (float)dphi_met_j1;
+      out_min_dphi_met_jet = (minDphi < 900.f ? minDphi : -1.f);
+
+      // Optional leading cleaned jets
+      out_pt_j1  = (float)Jet_pt[j1];
+      out_eta_j1 = (float)Jet_eta[j1];
+      out_phi_j1 = (float)Jet_phi[j1];
+      out_m_j1   = (float)Jet_mass[j1];
+
+      out_pt_j2  = (float)Jet_pt[j2];
+      out_eta_j2 = (float)Jet_eta[j2];
+      out_phi_j2 = (float)Jet_phi[j2];
+      out_m_j2   = (float)Jet_mass[j2];
+
+      tRecoAfterCuts->Fill();
+      
       if (!ele_idx_pass.empty()) {
          int e1 = ele_idx_pass[0];
          TLorentzVector E1;
@@ -726,8 +881,8 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
 
    std::cout << "---------------------------------------------------------------\n";
 
-   // Save histograms
-   TFile *f = new TFile("ggHAnalysis_plots.root", "RECREATE");
+   //save histograms
+   f->cd();
 
    // GEN (unweighted) -- will be empty unless you implement GEN filling
    h_pt_H->Write();   h_eta_H->Write();   h_phi_H->Write();   h_m_H->Write();
@@ -792,6 +947,10 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb)
 
    h_dphi_MET_bb->Write();
    h_dphi_MET_J1->Write();
+
+   
+
+   tRecoAfterCuts->Write();
 
    f->Close();
 

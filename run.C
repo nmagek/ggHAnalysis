@@ -7,6 +7,9 @@
 #include <TFile.h>
 #include <TTree.h>
 #include <iostream>
+#include <TSystem.h>
+#include <TString.h>
+
 
 void run(int sample = 1)
 {
@@ -37,6 +40,20 @@ void run(int sample = 1)
     std::cout << "[run] Using sigma [pb] = " << sigma_pb << ", lumi [fb^-1] = " << lumi_fb << "\n";
 
     // -------------------------------
+    // Build output file name from input file name
+    // -------------------------------
+    TString base = gSystem->BaseName(infile);   // e.g. GluGluH-...root
+    base.ReplaceAll(".root", "");               // strip extension
+
+    TString category = "unknown";
+    if (base.BeginsWith("GluGluH")) category = "signal";
+    else if (base.BeginsWith("QCD")) category = "qcd";
+
+    TString outfile = Form("ggHAnalysis_%s_%s.root", category.Data(), base.Data());
+    std::cout << "[run] Output file: " << outfile << "\n";
+
+    
+    // -------------------------------
     // Open input ROOT file
     // -------------------------------
     TFile *f = TFile::Open(infile);
@@ -60,7 +77,7 @@ void run(int sample = 1)
     // Run analysis (weighted with sigma)
     // -------------------------------
     ggHAnalysis ana(tree);
-    ana.Loop(sigma_pb, lumi_fb);
+    ana.Loop(sigma_pb, lumi_fb, outfile.Data());
 
     std::cout << "[run] Analysis completed successfully.\n";
 
