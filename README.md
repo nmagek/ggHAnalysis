@@ -37,7 +37,6 @@ root -l
 
 
 ### Run TMVA
-```cpp
 root -l
 .L TMVA_ggHClassification.C
 TMVA_ggHClassification.C()
