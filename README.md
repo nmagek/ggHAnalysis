@@ -31,3 +31,11 @@ root -l
 .x run.C(1)   // signal
 .x run.C(2)   // QCD background
 
+## ML Classification (TMVA)
+This repository also includes a TMVA-based classifier to separate signal/background using high-level kinematic variables.
+
+### Run TMVA
+```cpp
+root -l
+.L analysis/TMVA_ggHClassification.C
+.x analysis/TMVA_ggHClassification.C
