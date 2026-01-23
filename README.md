@@ -22,6 +22,10 @@ The analysis performs dataset normalization using cross section and integrated l
 - ROOT (tested with ROOT 6.x)
 - C++ compiler available in ROOT environment
 
+## ML Classification (TMVA)
+This repository also includes a TMVA-based classifier to separate signal/background using high-level kinematic variables.
+
+
 ## How to run
 From a ROOT session:
 
@@ -31,8 +35,6 @@ root -l
 .x run.C(1)   // signal
 .x run.C(2)   // QCD background
 
-## ML Classification (TMVA)
-This repository also includes a TMVA-based classifier to separate signal/background using high-level kinematic variables.
 
 ### Run TMVA
 ```cpp
