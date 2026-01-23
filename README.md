@@ -1,49 +1,47 @@
-# ggHAnalysis
-# Higgs Event Analysis Pipeline (ROOT/C++)
+# Higgs Event Analysis & ML Classification (ROOT / C++ / TMVA)
 
-End-to-end event-analysis pipeline for Higgs production studies using ROOT.
-The analysis performs dataset normalization using cross section and integrated luminosity, applies reconstruction-level object selections (leptons/jets), jet–lepton cleaning, b-tag requirements, MET and Higgs mass-window cuts, and writes both histograms and a structured output TTree for downstream studies.
+End-to-end data analysis and machine learning pipeline for Higgs production studies, built with ROOT/C++ and TMVA.
 
-## Features
-- Event weighting: `w = (σ [pb] × L [fb⁻¹] × 10³) / N_events`
-- GEN-level truth matching (PDG traversal + mother indices) for signal samples
-- RECO-level selection:
-  - loose lepton veto
-  - jet selection + jet–lepton cleaning (ΔR < 0.4)
-  - b-tag jet requirements
-  - MET cut
-  - Higgs candidate from 2 b-jets + mass window
-- Cutflow report (efficiencies + weighted yields)
-- Outputs:
-  - ROOT histograms (kinematics before/after cuts)
-  - `RecoAfterCuts` TTree with selected variables
+This project implements a full workflow:
+- Event processing and normalization using cross section × luminosity
+- Physics object selection (jets, leptons, b-tagging, MET, mass window cuts)
+- Feature engineering of high-level kinematic variables
+- Creation of an ML-ready dataset (`RecoAfterCuts` TTree)
+- Training and evaluation of a TMVA BDT classifier (signal vs background)
 
-## Requirements
-- ROOT (tested with ROOT 6.x)
-- C++ compiler available in ROOT environment
+---
 
-## ML Classification (TMVA BDT)
+## Pipeline Overview
 
-This step trains a TMVA BDT classifier to separate signal/background using the structured analysis dataset produced by `ggHAnalysis.C` (tree: `RecoAfterCuts`).
+1. **Data processing (ggHAnalysis.C)**  
+   - Reads ROOT ntuples  
+   - Applies event selection and data-quality checks  
+   - Computes derived variables (m_bb, MET, HT, angular variables, etc.)  
+   - Writes structured dataset (`RecoAfterCuts` tree)
 
-### Inputs
-- Signal: `ggHAnalysis_signal_*.root`
-- Background: `ggHAnalysis_qcd_*.root`
-- Tree name: `RecoAfterCuts`
-- Event weight branch: `wgt`
+2. **Modeling (TMVA_ggHClassification.C)**  
+   - Trains a BDT classifier using engineered features  
+   - Uses per-event weights  
+   - Produces evaluation outputs (ROC, classifier response, etc.)
+
+3. **Visualization (DrawggHAnalysis.C)**  
+   - Generates plots of key distributions before/after selection
+
+---
+
+## Technologies used
+- C++
+- ROOT Framework
+- TMVA (BDT classification)
+- Scientific data analysis
+- Feature engineering
+- Git/GitHub
+
+---
 
 ## How to run
-From a ROOT session:
 
 ```cpp
 root -l
 .L ggHAnalysis.C+
-.x run.C(1)   // signal
-.x run.C(2)   // QCD background
-
-
-### Run TMVA
-root -l
-.L TMVA_ggHClassification.C
-TMVA_ggHClassification.C()
-TMVA::TMVAGui("TMVA_ggH.root");
+.x run.C
