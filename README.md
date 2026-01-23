@@ -39,5 +39,6 @@ root -l
 ### Run TMVA
 ```cpp
 root -l
-.L analysis/TMVA_ggHClassification.C
-.x analysis/TMVA_ggHClassification.C
+.L TMVA_ggHClassification.C
+TMVA_ggHClassification.C()
+TMVA::TMVAGui("TMVA_ggH.root");
