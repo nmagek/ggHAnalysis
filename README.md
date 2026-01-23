@@ -45,3 +45,8 @@ This project implements a full workflow:
 root -l
 .L ggHAnalysis.C+
 .x run.C
+
+root -l
+.L TMVA_ggHClassification.C
+TMVA_ggHClassificatin()
+TMVA::TMVAGui("TMVA_ggH.root");
