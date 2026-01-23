@@ -22,9 +22,15 @@ The analysis performs dataset normalization using cross section and integrated l
 - ROOT (tested with ROOT 6.x)
 - C++ compiler available in ROOT environment
 
-## ML Classification (TMVA)
-This repository also includes a TMVA-based classifier to separate signal/background using high-level kinematic variables.
+## ML Classification (TMVA BDT)
 
+This step trains a TMVA BDT classifier to separate signal/background using the structured analysis dataset produced by `ggHAnalysis.C` (tree: `RecoAfterCuts`).
+
+### Inputs
+- Signal: `ggHAnalysis_signal_*.root`
+- Background: `ggHAnalysis_qcd_*.root`
+- Tree name: `RecoAfterCuts`
+- Event weight branch: `wgt`
 
 ## How to run
 From a ROOT session:
