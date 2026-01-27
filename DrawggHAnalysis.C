@@ -14,13 +14,13 @@ static void Detach(TH1 *h) {
    if (h) h->SetDirectory(nullptr);
 }
 
-void DrawggHAnalysis(int mode = 0)
+void DrawggHAnalysis(int mode = 0, const char* filename = "ggHAnalysis_signal_GluGluH-01J_HToAATo4B_M-12_2024.root")
 {
    gStyle->SetOptStat(1111);
 
-   TFile *f = TFile::Open("ggHAnalysis_plots.root", "READ");
+   TFile *f = TFile::Open(filename, "READ");
    if (!f || f->IsZombie()) {
-      std::cout << "ERROR: cannot open ggHAnalysis_plots.root\n";
+      std::cout << "ERROR: cannot open " << filename << "\n";
       return;
    }
 

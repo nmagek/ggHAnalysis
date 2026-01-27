@@ -169,6 +169,15 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
    TH1F *h_MET     = new TH1F("h_MET",     "PuppiMET;MET [GeV];Events",   100, 0, 500);
    TH1F *h_MET_phi = new TH1F("h_MET_phi", "PuppiMET #phi;#phi;Events",    64, -3.2, 3.2);
 
+   TH1F *h_dphi_J1J2_raw = new TH1F("h_dphi_J1J2_raw",
+				    "|#Delta#phi(J1,J2)| (raw, before cleaning);|#Delta#phi|;Events",
+				    64, 0, TMath::Pi());
+
+   TH1F *h_dR_J1J2_raw   = new TH1F("h_dR_J1J2_raw",
+				    "#DeltaR(J1,J2) (raw, before cleaning);#DeltaR;Events",
+				    60, 0, 6.0);
+
+
    // =======================
    // RECO AFTER all cuts (weighted)
    // =======================
@@ -601,8 +610,9 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 	  float dphi_raw = deltaPhiAbs((float)J1raw.Phi(), (float)J2raw.Phi());
 	  float dR_raw   = J1raw.DeltaR(J2raw);
 
-	  h_dphi_J1J2->Fill(dphi_raw, wgt);
-	  h_dR_J1J2->Fill(dR_raw, wgt);
+	  h_dphi_J1J2_raw->Fill(dphi_raw, wgt);
+	  h_dR_J1J2_raw->Fill(dR_raw, wgt);
+
 	}
       }
 
@@ -754,6 +764,9 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 
       float dphi = deltaPhiAbs((float)J1.Phi(), (float)J2.Phi());
       float dR   = J1.DeltaR(J2);
+      h_dphi_J1J2->Fill(dphi, wgt);
+      h_dR_J1J2->Fill(dR, wgt);
+
 
       float dmjj = std::fabs((float)J1.M() - (float)J2.M());
       h_abs_dm_J1J2->Fill(dmjj, wgt);
@@ -864,11 +877,11 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
    std::cout << "---------------------------------------------------------------\n";
 
    auto printRow = [&](const char* label, Long64_t n, double eps) {
-      std::cout << std::left << std::setw(22) << label
-                << std::right << std::setprecision(1) << std::setw(15) << (double)n
-                << std::setprecision(3) << std::setw(15) << eps
-                << std::setprecision(1) << std::setw(15) << wNev(n)
-                << "\n";
+     std::cout << std::left << std::setw(22) << label
+	       << std::right << std::setw(15) << n                 // full unweighted integer
+	       << std::setw(15) << std::fixed << std::setprecision(6) << eps  // efficiency
+	       << std::setw(20) << std::fixed << std::setprecision(6) << wNev(n) // weighted yield
+	       << "\n";
    };
 
    printRow("Raw",                 nRawEvents, 1.000);
