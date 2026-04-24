@@ -12,7 +12,7 @@
 #include <TLorentzVector.h>
 #include <TMath.h>
 #include <TTree.h>
-
+#include <type_traits> 
 #include <iostream>
 #include <map>
 #include <string>
@@ -21,6 +21,9 @@
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <locale>
+#include <sstream>
+#include "TMVA/Reader.h"
 
 // PDG codes for the signal
 const int PDG_H     = 25;
@@ -29,6 +32,16 @@ const int PDG_B     = 5;
 const int PDG_BBAR  = -5;
 const int PDG_GLUON = 21;
 
+
+template <typename ArrT>
+struct PtComparatorT {
+  using T = std::remove_cv_t<std::remove_reference_t<ArrT>>; // strip & and const
+  const T* pt;
+  PtComparatorT(const T* p) : pt(p) {}
+  bool operator()(int a, int b) const { return pt[a] > pt[b]; }
+};
+
+
 // ============================================================================
 // Main analysis loop
 // ============================================================================
@@ -36,23 +49,43 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 {
    if (fChain == 0) return;
    Long64_t nentries = fChain->GetEntries();
+   Long64_t Nstat = nentries;
 
+   TFile* curFile = fChain->GetCurrentFile();
+   if (curFile) {
+     TH1* hNev = (TH1*)curFile->Get("nevents");
+     if (hNev) {
+       Long64_t nFromHist = (Long64_t) llround(hNev->GetEntries());
+       if (nFromHist > 0) Nstat = nFromHist;
+     }
+   }
+
+
+   // round UP to 2 decimals
+   auto ceil2 = [](double x) -> double {
+     const double s = 100.0;
+     return std::ceil(x * s) / s;
+   };
+
+   // default formatting
+   std::cout << std::fixed << std::setprecision(2);
+
+   
    const double L_INT_FB        = lumi_fb;     // [fb^-1]
    const double SIGMA_PB        = sigma_pb;    // [pb]
    const double PB_FB_TO_EVENTS = 1.0e3;       // pb*fb^-1 -> events
 
    const double Nexp    = SIGMA_PB * L_INT_FB * PB_FB_TO_EVENTS;
-   const Long64_t Nstat = nentries;
 
    double wgt = 1.0;
    if (Nstat > 0) wgt = Nexp / static_cast<double>(Nstat);
 
    std::cout << "\n=== Normalization info ===\n";
-   std::cout << "  L_int [fb^-1]   = " << L_INT_FB << "\n";
-   std::cout << "  sigma [pb]      = " << SIGMA_PB << "\n";
-   std::cout << "  N_exp           = " << Nexp << "\n";
+   std::cout << "  L_int [fb^-1]   = " << ceil2(L_INT_FB) << "\n";
+   std::cout << "  sigma [pb]      = " << ceil2(SIGMA_PB) << "\n";
+   std::cout << "  N_exp           = " << ceil2(Nexp) << "\n";
    std::cout << "  N_stat          = " << Nstat << "\n";
-   std::cout << "  w = N_exp/N_stat= " << wgt  << "\n";
+   std::cout << "  w = N_exp/N_stat= " << ceil2(wgt)  << "\n";
    std::cout << "==========================\n\n";
 
 
@@ -236,14 +269,11 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
                                        "min |#Delta#phi(MET,Jet)| (after all cuts);min |#Delta#phi|;Events",
                                        64, 0.0, TMath::Pi());
 
-   const float PT_CUT  = 20.0;
+   const float PT_CUT  = 15.0;
    const float ETA_CUT = 2.5;
 
-   struct PtComparator {
-      const float* pt;
-      PtComparator(const float* p) : pt(p) {}
-      bool operator()(int a, int b) const { return pt[a] > pt[b]; }
-   };
+   
+
 
    // Cutflow counters (unweighted)
    Long64_t nRawEvents = nentries;
@@ -252,11 +282,13 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
    Long64_t nPassCut3  = 0; // pT(J1) > 100
    Long64_t nPassCut4  = 0; // 2 b-tag jets
    Long64_t nPassCut5  = 0; // MET < 140
-   Long64_t nPassCut6  = 0; // |m_bb - 125| < 50
+   Long64_t nPassCut6  = 0; // Mj1 && Mj2 <40
+   Long64_t nPassCut7  = 0; // |ΔΦ(j1,j2)| > 2.8
+   Long64_t nPassCut8  = 0; // |m_bb - 125| < 50
 
    // b-tag helper
    auto isBTagged = [&](int idx) -> bool {
-      return (Jet_btagUParTAK4probbb[idx] > 0.38);
+      return (Jet_btagUParTAK4probbb[idx] > 0.12);
    };
 
    // =======================
@@ -337,6 +369,42 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
    tRecoAfterCuts->Branch("phi_j2", &out_phi_j2, "phi_j2/F");
    tRecoAfterCuts->Branch("m_j2",   &out_m_j2,   "m_j2/F");
 
+      // =======================
+   // TMVA evaluation setup
+   // =======================
+   float v_hbb_m = 0.0f;
+   float v_hbb_pt = 0.0f;
+   float v_met = 0.0f;
+   float v_HT = 0.0f;
+   float v_dphi_j1j2 = 0.0f;
+   float v_dR_j1j2 = 0.0f;
+   float v_abs_dm_j1j2 = 0.0f;
+   float v_dphi_met_bb = 0.0f;
+   float v_dphi_met_j1 = 0.0f;
+   float v_min_dphi_met_jet = 0.0f;
+   float v_pt_j1 = 0.0f;
+   float v_pt_j2 = 0.0f;
+
+   TH1F *h_BDT = new TH1F("h_BDT", "BDT response;BDT score;Events", 50, -1.0, 1.0);
+
+   TMVA::Reader *reader = new TMVA::Reader("!Color:!Silent");
+
+   // IMPORTANT:
+   // These variable names must match EXACTLY the names used during TMVA training
+   reader->AddVariable("m_2b",             &v_hbb_m);
+   reader->AddVariable("pt_2b",            &v_hbb_pt);
+   reader->AddVariable("met",              &v_met);
+   reader->AddVariable("ht",               &v_HT);
+   reader->AddVariable("dphi_j1j2",        &v_dphi_j1j2);
+   reader->AddVariable("dR_j1j2",          &v_dR_j1j2);
+   reader->AddVariable("abs_dm_j1j2",      &v_abs_dm_j1j2);
+   reader->AddVariable("dphi_met_bb",      &v_dphi_met_bb);
+   reader->AddVariable("dphi_met_j1",      &v_dphi_met_j1);
+   reader->AddVariable("min_dphi_met_jet", &v_min_dphi_met_jet);
+   reader->AddVariable("pt_j1",            &v_pt_j1);
+   reader->AddVariable("pt_j2",            &v_pt_j2);
+   reader->BookMVA("BDT",
+"/home/nick/ggHAnalysis/dataset_ggH/weights/MVAnalysis_BDT.weights.xml");
    
    // -----------------------------
    // Event loop
@@ -435,7 +503,7 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 
                if (b_from_A.size() < 2) continue;
 
-               PtComparator cmpB_local(GenPart_pt);
+               PtComparatorT<decltype(GenPart_pt[0])> cmpB_local(GenPart_pt);
                std::sort(b_from_A.begin(), b_from_A.end(), cmpB_local);
 
                int ib1 = b_from_A[0];
@@ -472,7 +540,7 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
                b_all_idx.push_back(i);
             }
 
-            PtComparator cmpB(GenPart_pt);
+            PtComparatorT<decltype(GenPart_pt[0])> cmpB(GenPart_pt);
             std::sort(b_all_idx.begin(), b_all_idx.end(), cmpB);
 
             if (b_all_idx.size() >= 1) {
@@ -506,7 +574,9 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 	    
       }
  }
-      // Build loose lepton counts (Cut1) + tight collections for "before selection" plots
+      // ----------------------------------------------------
+      // Loose lepton collections (NO tight selection)
+      // ----------------------------------------------------
       int nLooseMu  = 0;
       int nLooseEle = 0;
 
@@ -514,44 +584,41 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
       std::vector<int> ele_idx_pass;
       std::vector<int> jet_idx_pass;
 
-      // Muons
+      mu_idx_pass.reserve(nMuon);
+      ele_idx_pass.reserve(nElectron);
+      jet_idx_pass.reserve(nJet);
+
+      // Muons: pt>10, |eta|<2.4, looseId>0.5, pfRelIso04_all<0.25
       for (int i = 0; i < nMuon; ++i) {
-         float pt  = Muon_pt[i];
-         float eta = Muon_eta[i];
+	const float pt  = Muon_pt[i];
+	const float eta = Muon_eta[i];
 
-         bool passLooseMuKin = (pt > 10.0 && std::fabs(eta) < 2.4);
-         bool passLooseMuId  = (Muon_looseId[i] != 0);
-         if (passLooseMuKin && passLooseMuId) ++nLooseMu;
+	const bool passLooseMu =
+	  (pt > 10.0f) &&
+	  (std::fabs(eta) < 2.4f) &&
+	  (Muon_looseId[i] > 0.5f) &&
+	  (Muon_pfRelIso04_all[i] < 0.25f);
 
-         bool passKin = (pt >= PT_CUT && std::fabs(eta) <= ETA_CUT);
-         bool passId  = (Muon_tightId[i] != 0);
-         bool passIso = (Muon_pfRelIso04_all[i] < 0.15);
+	if (!passLooseMu) continue;
 
-         if (!passKin) continue;
-         if (!passId)  continue;
-         if (!passIso) continue;
-
-         mu_idx_pass.push_back(i);
+	++nLooseMu;
+	mu_idx_pass.push_back(i);
       }
 
-      // Electrons
+      // Electrons: pt>15, |eta|<2.5, mvaIso_WP90>0.5
       for (int i = 0; i < nElectron; ++i) {
-         float pt  = Electron_pt[i];
-         float eta = Electron_eta[i];
+	const float pt  = Electron_pt[i];
+	const float eta = Electron_eta[i];
 
-         bool passLooseEleKin = (pt > 10.0 && std::fabs(eta) < 2.5);
-         bool passLooseEleId  = (Electron_cutBased[i] >= 1);
-         if (passLooseEleKin && passLooseEleId) ++nLooseEle;
+	const bool passLooseEle =
+	  (pt > 15.0f) &&
+	  (std::fabs(eta) < 2.5f) &&
+	  (Electron_mvaIso_WP90[i] > 0.5f);
 
-         bool passKin = (pt >= PT_CUT && std::fabs(eta) <= ETA_CUT);
-         bool passId  = (Electron_cutBased[i] >= 3);
-         bool passIso = (Electron_pfRelIso03_all[i] < 0.15);
+	if (!passLooseEle) continue;
 
-         if (!passKin) continue;
-         if (!passId)  continue;
-         if (!passIso) continue;
-
-         ele_idx_pass.push_back(i);
+	++nLooseEle;
+	ele_idx_pass.push_back(i);
       }
 
       // Jets
@@ -578,17 +645,18 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 
       // Sort by pT
       if (!mu_idx_pass.empty()) {
-         PtComparator cmpMu(Muon_pt);
-         std::sort(mu_idx_pass.begin(), mu_idx_pass.end(), cmpMu);
+	PtComparatorT<decltype(Muon_pt[0])> cmpMu(Muon_pt);
+	std::sort(mu_idx_pass.begin(), mu_idx_pass.end(), cmpMu);
       }
       if (!ele_idx_pass.empty()) {
-         PtComparator cmpEle(Electron_pt);
-         std::sort(ele_idx_pass.begin(), ele_idx_pass.end(), cmpEle);
+	PtComparatorT<decltype(Electron_pt[0])> cmpEle(Electron_pt);
+	std::sort(ele_idx_pass.begin(), ele_idx_pass.end(), cmpEle);
       }
       if (!jet_idx_pass.empty()) {
-         PtComparator cmpJet(Jet_pt);
-         std::sort(jet_idx_pass.begin(), jet_idx_pass.end(), cmpJet);
+	PtComparatorT<decltype(Jet_pt[0])> cmpJet(Jet_pt);
+	std::sort(jet_idx_pass.begin(), jet_idx_pass.end(), cmpJet);
       }
+
 
       // ----------------------------------------------------
       // Δphi(J1,J2) and ΔR(J1,J2) BEFORE cleaning (raw jets)
@@ -617,32 +685,65 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
       }
 
       
-      // Jet–lepton cleaning (ΔR < 0.4 veto w.r.t. tight leptons)
+      // Jet–lepton cleaning (ΔR < 0.4 veto w.r.t. selected leptons: e+mu combined)
       std::vector<int> jet_idx_clean;
       jet_idx_clean.reserve(jet_idx_pass.size());
 
-      for (int j : jet_idx_pass) {
-         TLorentzVector J;
-         J.SetPtEtaPhiM(Jet_pt[j], Jet_eta[j], Jet_phi[j], Jet_mass[j]);
+      // build combined lepton 4-vectors
+      std::vector<TLorentzVector> lepP4;
+      lepP4.reserve(ele_idx_pass.size() + mu_idx_pass.size());
 
-         bool overlaps = false;
-
-         for (int e : ele_idx_pass) {
-            TLorentzVector E;
-            E.SetPtEtaPhiM(Electron_pt[e], Electron_eta[e], Electron_phi[e], 0.0);
-            if (J.DeltaR(E) < 0.4) { overlaps = true; break; }
-         }
-
-         if (!overlaps) {
-            for (int m : mu_idx_pass) {
-               TLorentzVector M;
-               M.SetPtEtaPhiM(Muon_pt[m], Muon_eta[m], Muon_phi[m], Muon_mass[m]);
-               if (J.DeltaR(M) < 0.4) { overlaps = true; break; }
-            }
-         }
-
-         if (!overlaps) jet_idx_clean.push_back(j);
+      
+      // electrons
+      for (int e : ele_idx_pass) {
+	TLorentzVector E;
+	E.SetPtEtaPhiM(
+		       Electron_pt[e],
+		       Electron_eta[e],
+		       Electron_phi[e],
+		       Electron_mass[e]
+		       );
+	lepP4.push_back(E);
       }
+
+      // muons
+      for (int m : mu_idx_pass) {
+	TLorentzVector M;
+	M.SetPtEtaPhiM(
+		       Muon_pt[m],
+		       Muon_eta[m],
+		       Muon_phi[m],
+		       Muon_mass[m]  
+		       );
+	lepP4.push_back(M);
+      }
+
+      // cleaning
+      const float DR_CLEAN = 0.4f;
+
+      for (int j : jet_idx_pass) {
+
+	TLorentzVector J;
+	J.SetPtEtaPhiM(
+		       Jet_pt[j],
+		       Jet_eta[j],
+		       Jet_phi[j],
+		       Jet_mass[j]
+		       );
+
+	bool overlaps = false;
+
+	for (const auto& L : lepP4) {
+	  if (J.DeltaR(L) < DR_CLEAN) {
+	    overlaps = true;
+	    break;
+	  }
+	}
+
+	if (!overlaps)
+	  jet_idx_clean.push_back(j);
+      }
+
           
       // Fill cleaned jet multiplicity
       h_nJet_clean->Fill((int)jet_idx_clean.size(), wgt);
@@ -715,10 +816,11 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
       // Cut3: pT(J1) > 100 (cleaned leading jet)
       int j1 = jet_idx_clean[0];
       int j2 = jet_idx_clean[1];
-      if (Jet_pt[j1] <= 100.0) continue;
+      if (Jet_pt[j1] <= 450.0) continue;
+      if (Jet_pt[j2] <= 350.0) continue;
       ++nPassCut3;
 
-      // Cut4: require >=2 b-tagged jets among CLEANED jets
+      // Cut4: require >=2 doubleb-tagged jets among CLEANED jets
       std::vector<int> bjet_idx;
       bjet_idx.reserve(jet_idx_clean.size());
       for (int idx : jet_idx_clean) {
@@ -732,7 +834,7 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
       ++nPassCut5;
 
       // Sort b-jets by pT
-      PtComparator cmpB(Jet_pt);
+      PtComparatorT<decltype(Jet_pt[0])> cmpB(Jet_pt);
       std::sort(bjet_idx.begin(), bjet_idx.end(), cmpB);
 
       int b1 = bjet_idx[0];
@@ -749,9 +851,17 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 
       const float m_2b = (float)Hcand.M();
 
-      // Cut6: |m_2b - 125| < 50 GeV
+      //Cut6: Mj1 && Mj2 < 30 Gev
+      // if (Jet_mass[j1] > 30. || Jet_mass[j2] > 30.0) continue;
+      //++nPassCut6;
+
+      //Cut7: |ΔΦ(j1,j2)|>3.0
+      if (deltaPhiAbs((float)Jet_phi[j1], (float)Jet_phi[j2]) <= 3.0) continue;
+      ++nPassCut7;
+      
+      // Cut8: |m_2b - 125| < 50 GeV
       if (std::fabs(m_2b - M_HIGGS) >= DM_HIGGS_MAX) continue;
-      ++nPassCut6;
+      ++nPassCut8;
 
       // Guard leading cleaned jets against NaN inputs before building TLorentzVectors
       if (!isFinite(Jet_pt[j1]) || !isFinite(Jet_eta[j1]) || !isFinite(Jet_phi[j1]) || !isFinite(Jet_mass[j1])) continue;
@@ -805,6 +915,25 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
       }
       if (minDphi < 900.f) h_min_dphi_MET_Jet->Fill(minDphi, wgt);
 
+            // -----------------------------
+      // TMVA evaluation (after all cuts)
+      // -----------------------------
+      v_hbb_m             = (float)m_2b;
+      v_hbb_pt            = (float)Hcand.Pt();
+      v_met               = (float)PuppiMET_pt;
+      v_HT                = (float)HT;
+      v_dphi_j1j2         = (float)dphi;
+      v_dR_j1j2           = (float)dR;
+      v_abs_dm_j1j2       = (float)dmjj;
+      v_dphi_met_bb       = (float)dphi_met_bb;
+      v_dphi_met_j1       = (float)dphi_met_j1;
+      v_min_dphi_met_jet  = (minDphi < 900.f ? minDphi : -1.f);
+      v_pt_j1             = (float)Jet_pt[j1];
+      v_pt_j2             = (float)Jet_pt[j2];
+
+      const float bdtScore = reader->EvaluateMVA("BDT");
+      h_BDT->Fill(bdtScore, wgt);
+      
       // -----------------------------
       // Fill output tree (after all cuts)
       // -----------------------------
@@ -857,40 +986,63 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
          h_dR_J1_e1_clean->Fill(J1.DeltaR(E1), wgt);
       }
       if (!mu_idx_pass.empty()) {
-         int m1 = mu_idx_pass[0];
-         TLorentzVector M1;
-         M1.SetPtEtaPhiM(Muon_pt[m1], Muon_eta[m1], Muon_phi[m1], Muon_mass[m1]);
-         h_dR_J1_mu1->Fill(J1.DeltaR(M1), wgt);
-         h_dR_J1_mu1_clean->Fill(J1.DeltaR(M1), wgt);
+	int m1 = mu_idx_pass[0];
+	TLorentzVector M1;
+	M1.SetPtEtaPhiM(Muon_pt[m1], Muon_eta[m1], Muon_phi[m1], Muon_mass[m1]);
+	h_dR_J1_mu1->Fill(J1.DeltaR(M1), wgt);
+	h_dR_J1_mu1_clean->Fill(J1.DeltaR(M1), wgt);
       }
    }
 
    // Print cutflow
    auto eff = [&](Long64_t n) -> double {
-      if (nRawEvents <= 0) return 0.0;
-      return (double)n / (double)nRawEvents;
+     if (nRawEvents <= 0) return 0.0;
+     return (double)n / (double)nRawEvents;
    };
-   auto wNev = [&](Long64_t n) -> double { return (double)n * wgt; };
 
-   std::cout << "---------------------------------------------------------------\n";
-   std::cout << "Cutflow (unweighted counts, efficiencies, weighted yields)\n";
-   std::cout << "---------------------------------------------------------------\n";
+   auto wNev = [&](Long64_t n) -> double {
+     return (double)n * wgt;
+   };
 
-   auto printRow = [&](const char* label, Long64_t n, double eps) {
-     std::cout << std::left << std::setw(22) << label
-	       << std::right << std::setw(15) << n                 // full unweighted integer
-	       << std::setw(15) << std::fixed << std::setprecision(6) << eps  // efficiency
-	       << std::setw(20) << std::fixed << std::setprecision(6) << wNev(n) // weighted yield
+   // column widths
+   const int W_CUT = 30;
+   const int W_N   = 16;
+   const int W_EFF = 14;
+   const int W_WGT = 18;
+
+   std::cout << "----------------------------------------------------------------------------\n";
+   std::cout << "Cutflow table\n";
+   std::cout << "----------------------------------------------------------------------------\n";
+
+   // header
+   std::cout << std::left  << std::setw(W_CUT) << "Cut"
+	     << std::right << std::setw(W_N)   << "N (unweighted)"
+	     << std::setw(W_EFF) << "eff"
+	     << std::setw(W_WGT) << "N (weighted)"
+	     << "\n";
+
+   std::cout << std::string(W_CUT + W_N + W_EFF + W_WGT, '-') << "\n";
+
+   // row printer
+   auto printRow = [&](const char* label, Long64_t n) {
+     std::cout << std::left  << std::setw(W_CUT) << label
+	       << std::right << std::setw(W_N)   << n
+	       << std::setw(W_EFF) << ceil2(eff(n))
+	       << std::setw(W_WGT) << ceil2(wNev(n))
 	       << "\n";
    };
 
-   printRow("Raw",                 nRawEvents, 1.000);
-   printRow("Cut1: veto loose ℓ",  nPassCut1,  eff(nPassCut1));
-   printRow("Cut2: N_{jet}>=2",    nPassCut2,  eff(nPassCut2));
-   printRow("Cut3: p_{T}(J1)>100", nPassCut3,  eff(nPassCut3));
-   printRow("Cut4: 2 b-tag jets",  nPassCut4,  eff(nPassCut4));
-   printRow("Cut5: MET<140 GeV",   nPassCut5,  eff(nPassCut5));
-   printRow("Cut6: |m_bb-125|<50", nPassCut6,  eff(nPassCut6));
+   printRow("Raw",                       nRawEvents);
+   printRow("Cut1: veto loose l",        nPassCut1);
+   printRow("Cut2: Njet>=2",             nPassCut2);
+   printRow("Cut3: pT(J1)>450, pT(J2)>350",          nPassCut3);
+   printRow("Cut4: >=2 doubleb-tag",     nPassCut4);
+   printRow("Cut5: MET<140 GeV",         nPassCut5);
+   printRow("Cut7: |Δphi(J1,J2)|>3.0",   nPassCut7);
+   printRow("Cut8: |mbb-125|<50",        nPassCut8);
+
+   std::cout << "----------------------------------------------------------------------------\n";
+
 
    std::cout << "---------------------------------------------------------------\n";
 
@@ -960,11 +1112,11 @@ void ggHAnalysis::Loop(double sigma_pb, double lumi_fb, const char* outFileName)
 
    h_dphi_MET_bb->Write();
    h_dphi_MET_J1->Write();
-
+   h_BDT->Write();
    
 
    tRecoAfterCuts->Write();
-
+   delete reader;
    f->Close();
 
    std::cout << "Wrote histograms to ggHAnalysis_plots.root\n";
