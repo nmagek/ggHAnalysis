@@ -1,8 +1,6 @@
 // BDTToyMC_Study_ModeSwitch.C
 //
 // Structured Bayesian toy-MC limit code.
-// - Uses the input ROOT files from your first code.
-// - RooFit model is built directly with Nexp_sig and Nexp_bkg, like your second code.
 // - Posterior plots have x-axis in Nexp_sig, including negative values.
 // - Posterior is computed only in the physical region Nexp_sig >= 0.
 // - Negative Nexp_sig region is shown with zero posterior.
